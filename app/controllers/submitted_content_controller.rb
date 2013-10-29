@@ -2,11 +2,11 @@ require 'zip/zip'
 
 class SubmittedContentController < ApplicationController
   helper :wiki
-  
+
   def edit
     @participant = AssignmentParticipant.find(params[:id])
     return unless current_user_id?(@participant.user_id)
-    
+
     @assignment = @participant.assignment
 
     #ACS We have to check if the number of members on the team is more than 1(group assignment)
@@ -14,36 +14,36 @@ class SubmittedContentController < ApplicationController
     if @assignment.max_team_size > 1 && @participant.team.nil?
       flash[:alert] = "This is a team assignment. Before submitting your work, you must <a style='color: blue;' href='../../student_team/view/#{params[:id]}'>create a team</a>, even if you will be the only member of the team"
       redirect_to :controller => 'student_task', :action => 'view', :id => params[:id]
-      else if @participant.team.nil?
-             #create a new team for current user before submission
-             team = AssignmentTeam.create_team_and_node(@assignment.id)
-             puts "+++++@participant.user_id = "+ @participant.user_id.to_s
-             puts "+++++@assignment.id = "+ @assignment.id.to_s
-             team.add_member(User.find(@participant.user_id),@assignment.id)
-             puts "+++++++++ I just create a new team!"
-           end
+    else if @participant.team.nil?
+           #create a new team for current user before submission
+           team = AssignmentTeam.create_team_and_node(@assignment.id)
+           puts "+++++@participant.user_id = "+ @participant.user_id.to_s
+           puts "+++++@assignment.id = "+ @assignment.id.to_s
+           team.add_member(User.find(@participant.user_id),@assignment.id)
+           puts "+++++++++ I just create a new team!"
+         end
     end
   end
-  
+
   def view
     @participant = AssignmentParticipant.find(params[:id])
     return unless current_user_id?(@participant.user_id)
-    
+
     @assignment = @participant.assignment
-  end  
-  
+  end
+
   def submit_hyperlink
     participant = AssignmentParticipant.find(params[:id])
     return unless current_user_id?(participant.user_id)
 
     begin
-      participant.submmit_hyperlink(params['submission'])
+      participant.submit_hyperlink(params['submission'])
       participant.update_resubmit_times
-    rescue 
+    rescue
       flash[:error] = "The URL or URI is not valid. Reason: "+$!
-    end    
+    end
     redirect_to :action => 'edit', :id => participant.id
-  end    
+  end
 
   # Note: This is not used yet in the view until we all decide to do so
   def remove_hyperlink
@@ -52,12 +52,12 @@ class SubmittedContentController < ApplicationController
 
     begin
       participant.remove_hyperlink(params['chk_links'].to_i)
-    rescue 
+    rescue
       flash[:error] = $!
-    end    
+    end
     redirect_to :action => 'edit', :id => participant.id
   end
-  
+
   def submit_file
     participant = AssignmentParticipant.find(params[:id])
     return unless current_user_id?(participant.user_id)
@@ -69,31 +69,33 @@ class SubmittedContentController < ApplicationController
     @current_folder.name = "/"
     if params[:current_folder]
       @current_folder.name = FileHelper::sanitize_folder(params[:current_folder][:name])
-    end           
-           
-    curr_directory = participant.get_path.to_s+@current_folder.name
-    
-
-    if !File.exists? curr_directory
-       FileUtils.mkdir_p(curr_directory)
     end
-   
+
+    curr_directory = participant.get_path.to_s+@current_folder.name
+    if !File.exists? curr_directory
+      FileUtils.mkdir_p(curr_directory)
+    else
+      FileUtils.rm_rf(curr_directory)
+      FileUtils.mkdir_p(curr_directory)
+    end
+
     safe_filename = file.original_filename.gsub(/\\/,"/")
     safe_filename = FileHelper::sanitize_filename(safe_filename) # new code to sanitize file path before upload*
     full_filename =  curr_directory + File.split(safe_filename).last.gsub(" ",'_') #safe_filename #curr_directory +
     File.open(full_filename, "wb") { |f| f.write(file.read) }
+
     if params['unzip']
       SubmittedContentHelper::unzip_file(full_filename, curr_directory, true) if get_file_type(safe_filename) == "zip"
     end
-    participant.update_resubmit_times       
+    participant.update_resubmit_times
 
     #send message to reviewers when submission has been updated
     participant.assignment.email(participant.id) rescue nil # If the user has no team: 1) there are no reviewers to notify; 2) calling email will throw an exception. So rescue and ignore it.
 
     redirect_to :action => 'edit', :id => participant.id
   end
-  
-  
+
+
   def folder_action
     @participant = AssignmentParticipant.find(params[:id])
     return unless current_user_id?(@participant.user_id)
@@ -115,34 +117,34 @@ class SubmittedContentController < ApplicationController
       create_new_folder
     end
 
-    redirect_to :action => 'edit', :id => @participant.id    
-  end  
-  
-  def download    
-      #folder_name = FileHelper::sanitize_folder(@current_folder.name)
-      folder_name = params['current_folder']['name']
-      # -- This code removed on 4/10/09 ... was breaking downloads of files with hyphens in them ...file_name = FileHelper::sanitize_filename(params['download'])
-      file_name = params['download']
-            
-      file_split = file_name.split('.')
-      if file_split.length > 1 and (file_split[1] == 'htm' or file_split[1] == 'html')
-        send_file(folder_name+ "/" + file_name, :type => Mime::HTML.to_s, :disposition => 'inline')
+    redirect_to :action => 'edit', :id => @participant.id
+  end
+
+  def download
+    #folder_name = FileHelper::sanitize_folder(@current_folder.name)
+    folder_name = params['current_folder']['name']
+    # -- This code removed on 4/10/09 ... was breaking downloads of files with hyphens in them ...file_name = FileHelper::sanitize_filename(params['download'])
+    file_name = params['download']
+
+    file_split = file_name.split('.')
+    if file_split.length > 1 and (file_split[1] == 'htm' or file_split[1] == 'html')
+      send_file(folder_name+ "/" + file_name, :type => Mime::HTML.to_s, :disposition => 'inline')
+    else
+      if !File.directory?(folder_name + "/" + file_name)
+        file_ext = File.extname(file_name)[1..-1]
+        file_ext = 'bin' if file_ext.blank? # default to application/octet-stream
+        send_file folder_name + "/" + file_name,
+                  :disposition => 'inline',
+                  :type => Mime::Type.lookup_by_extension(file_ext)
       else
-        if !File.directory?(folder_name + "/" + file_name)
-          file_ext = File.extname(file_name)[1..-1]
-          file_ext = 'bin' if file_ext.blank? # default to application/octet-stream
-          send_file folder_name + "/" + file_name,
-                    :disposition => 'inline',
-                    :type => Mime::Type.lookup_by_extension(file_ext)
-        else
-          raise "Directory downloads are not supported"
-        end
-      end 
-  end  
-  
+        raise "Directory downloads are not supported"
+      end
+    end
+  end
+
   # This was written for a custom rubric used by Dr. Jennifer Kidd (ODU)
   # Note that the file that is being uploaded here is a REVIEW, not submitted work. 
-  def custom_submit_file 
+  def custom_submit_file
 
     begin
       file = params[:uploaded_file]
@@ -155,50 +157,52 @@ class SubmittedContentController < ApplicationController
       end
 
       curr_directory = participant.assignment.get_path.to_s+ "/" +params[:map].to_s + @current_folder.name
-      if !File.exists? curr_directory
-         FileUtils.mkdir_p(curr_directory)
-      else
-         FileUtils.rm_rf(curr_directory)
-         FileUtils.mkdir_p(curr_directory)
-      end
-
-      safe_filename = file.original_filename.gsub(/\\/,"/")
-      safe_filename = FileHelper::sanitize_filename(safe_filename) # new code to sanitize file path before upload*
-      full_filename =  curr_directory + File.split(safe_filename).last.gsub(" ",'_') #safe_filename #curr_directory +
-      File.open(full_filename, "wb") { |f| f.write(file.read) }
+      check_file_exists(curr_directory)
     rescue
     end
 
     if params[:return_to] == "edit"
       redirect_to :controller=>'response', :action => params[:return_to], :id => params[:id]
     else
-      redirect_to :controller=>'response', :action => params[:return_to], :id => params[:map]      
+      redirect_to :controller=>'response', :action => params[:return_to], :id => params[:map]
     end
   end
 
-private  
-  
+  private
+
+  def check_file_exists  curr_directory
+    if !File.exists? curr_directory
+      FileUtils.mkdir_p(curr_directory)
+    else
+      FileUtils.rm_rf(curr_directory)
+      FileUtils.mkdir_p(curr_directory)
+    end
+
+    safe_filename = file.original_filename.gsub(/\\/,"/")
+    safe_filename = FileHelper::sanitize_filename(safe_filename) # new code to sanitize file path before upload*
+    full_filename =  curr_directory + File.split(safe_filename).last.gsub(" ",'_') #safe_filename #curr_directory +
+    File.open(full_filename, "wb") { |f| f.write(file.read) }
+  end
+
   def get_file_type file_name
     base = File.basename(file_name)
     if base.split(".").size > 1
       return base.split(".")[base.split(".").size-1]
     end
-  end  
+  end
 
-  
+
   def move_selected_file
     old_filename = params[:directories][params[:chk_files]] + "/" + params[:filenames][params[:chk_files]]
-    newloc = @participant.get_path
-    newloc += "/"
-    newloc += params[:faction][:move]
+    new_location = @participant.get_path + "/" + params[:faction][:move]
     begin
-      FileHelper::move_file(old_filename, newloc)
+      FileHelper::move_file(old_filename, new_location)
       flash[:note] = "The file was moved successfully from \"/#{params[:filenames][params[:chk_files]]}\" to \"/#{params[:faction][:move]}\""
     rescue
       flash[:error] = "There was a problem moving the file: "+$!
     end
-  end  
-  
+  end
+
   def rename_selected_file
     old_filename = params[:directories][params[:chk_files]] +"/"+ params[:filenames][params[:chk_files]]
     new_filename = params[:directories][params[:chk_files]] +"/"+ FileHelper::sanitize_filename(params[:faction][:rename])
@@ -206,28 +210,28 @@ private
       if !File.exist?(new_filename)
         File.send("rename", old_filename, new_filename)
       else
-        raise "A file already exists in this directory with the name \"#{params[:faction][:rename]}\""        
+        raise "A file already exists in this directory with the name \"#{params[:faction][:rename]}\""
       end
     rescue
       flash[:error] = "There was a problem renaming the file: "+$!
     end
-  end  
-  
+  end
+
   def delete_selected_files
     filename = params[:directories][params[:chk_files]] +"/"+ params[:filenames][params[:chk_files]]
     FileUtils.rm_r(filename)
-  end  
-  
+  end
+
   def copy_selected_file
     old_filename = params[:directories][params[:chk_files]] +"/"+ params[:filenames][params[:chk_files]]
     new_filename = params[:directories][params[:chk_files]] +"/"+ FileHelper::sanitize_filename(params[:faction][:copy])
-    begin   
+    begin
       if File.exist?(new_filename)
-         raise "A file with this name already exists. Please delete the existing file before copying."
+        raise "A file with this name already exists. Please delete the existing file before copying."
       end
-    
+
       if File.exist?(old_filename)
-        FileUtils.cp_r(old_filename, new_filename)       
+        FileUtils.cp_r(old_filename, new_filename)
       else
         raise "The referenced file does not exist."
       end
@@ -235,13 +239,11 @@ private
       flash[:error] = "There was a problem copying the file: "+$!
     end
   end
-  
+
   def create_new_folder
-    newloc = @participant.get_path
-    newloc += "/"
-    newloc += params[:faction][:create]
+    new_location = @participant.get_path + "/" + params[:faction][:create]
     begin
-      FileHelper::create_directory_from_path(newloc)
+      FileHelper::create_directory_from_path(new_location)
       flash[:note] = "The directory #{params[:faction][:create]} was created."
     rescue
       flash[:error] = $!

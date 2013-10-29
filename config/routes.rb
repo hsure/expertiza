@@ -133,6 +133,7 @@ Expertiza::Application.routes.draw do |map|
     end
   end
   match 'leaderboard/index', controller: :leaderboard, action: :index
+  match ':controller(/:action(/:id))(.:format)'
 
   resources :markup_styles
 
