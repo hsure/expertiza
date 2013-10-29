@@ -157,6 +157,7 @@ class SubmittedContentController < ApplicationController
       end
 
       curr_directory = participant.assignment.get_path.to_s+ "/" +params[:map].to_s + @current_folder.name
+      #refactored existing code. check_file_exists gets called to perform file existance
       check_file_exists(curr_directory)
     rescue
     end
@@ -171,6 +172,7 @@ class SubmittedContentController < ApplicationController
   private
 
   def check_file_exists  curr_directory
+    #check if file exists. If not, create a new file. Else, remove the existing file and then create new file.
     if !File.exists? curr_directory
       FileUtils.mkdir_p(curr_directory)
     else
@@ -181,7 +183,7 @@ class SubmittedContentController < ApplicationController
     safe_filename = file.original_filename.gsub(/\\/,"/")
     safe_filename = FileHelper::sanitize_filename(safe_filename) # new code to sanitize file path before upload*
     full_filename =  curr_directory + File.split(safe_filename).last.gsub(" ",'_') #safe_filename #curr_directory +
-    File.open(full_filename, "wb") { |f| f.write(file.read) }
+    File.open(full_filename, "wb") { |f| f.write(file.read) }  #open file to be written into
   end
 
   def get_file_type file_name
