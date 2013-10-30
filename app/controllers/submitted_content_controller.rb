@@ -3,6 +3,7 @@ require 'zip/zip'
 class SubmittedContentController < ApplicationController
   helper :wiki
 
+
   def edit
     @participant = AssignmentParticipant.find(params[:id])
     return unless current_user_id?(@participant.user_id)
@@ -25,6 +26,7 @@ class SubmittedContentController < ApplicationController
     end
   end
 
+  #Method to view the submitted content
   def view
     @participant = AssignmentParticipant.find(params[:id])
     return unless current_user_id?(@participant.user_id)
@@ -32,6 +34,8 @@ class SubmittedContentController < ApplicationController
     @assignment = @participant.assignment
   end
 
+  #Method to submit hyperlinks
+  #Checks for the validity of submitted url and displays appropriate message
   def submit_hyperlink
     participant = AssignmentParticipant.find(params[:id])
     return unless current_user_id?(participant.user_id)
@@ -45,7 +49,8 @@ class SubmittedContentController < ApplicationController
     redirect_to :action => 'edit', :id => participant.id
   end
 
-  # Note: This is not used yet in the view until we all decide to do so
+  # Method to remove submitted links
+  #Removes selected link
   def remove_hyperlink
     participant = AssignmentParticipant.find(params[:id])
     return unless current_user_id?(participant.user_id)
@@ -58,6 +63,8 @@ class SubmittedContentController < ApplicationController
     redirect_to :action => 'edit', :id => participant.id
   end
 
+  #Method to accept and save the submitted file
+  #Resulting in errors currently, should check for changes in main_expertiza
   def submit_file
     participant = AssignmentParticipant.find(params[:id])
     return unless current_user_id?(participant.user_id)
@@ -72,12 +79,7 @@ class SubmittedContentController < ApplicationController
     end
 
     curr_directory = participant.get_path.to_s+@current_folder.name
-    if !File.exists? curr_directory
-      FileUtils.mkdir_p(curr_directory)
-    else
-      FileUtils.rm_rf(curr_directory)
-      FileUtils.mkdir_p(curr_directory)
-    end
+    check_file_exists(curr_directory)
 
     safe_filename = file.original_filename.gsub(/\\/,"/")
     safe_filename = FileHelper::sanitize_filename(safe_filename) # new code to sanitize file path before upload*
@@ -96,7 +98,8 @@ class SubmittedContentController < ApplicationController
   end
 
 
-  def folder_action
+  #Define methods for each folder action
+  def file_folder_action
     @participant = AssignmentParticipant.find(params[:id])
     return unless current_user_id?(@participant.user_id)
 
@@ -105,15 +108,15 @@ class SubmittedContentController < ApplicationController
     if params[:current_folder]
       @current_folder.name = FileHelper::sanitize_folder(params[:current_folder][:name])
     end
-    if params[:faction][:delete]
+    if params[:faction][:delete]        #call method to delete selected files
       delete_selected_files
-    elsif params[:faction][:rename]
+    elsif params[:faction][:rename]     #call method to rename selected files
       rename_selected_file
-    elsif params[:faction][:move]
+    elsif params[:faction][:move]       #call method to move selected files
       move_selected_file
-    elsif params[:faction][:copy]
+    elsif params[:faction][:copy]       #call method to copy selected files
       copy_selected_file
-    elsif params[:faction][:create]
+    elsif params[:faction][:create]     #call method to create new folder
       create_new_folder
     end
 
@@ -159,6 +162,11 @@ class SubmittedContentController < ApplicationController
       curr_directory = participant.assignment.get_path.to_s+ "/" +params[:map].to_s + @current_folder.name
       #refactored existing code. check_file_exists gets called to perform file existance
       check_file_exists(curr_directory)
+
+      safe_filename = file.original_filename.gsub(/\\/,"/")
+      safe_filename = FileHelper::sanitize_filename(safe_filename) # new code to sanitize file path before upload*
+      full_filename =  curr_directory + File.split(safe_filename).last.gsub(" ",'_') #safe_filename #curr_directory +
+      File.open(full_filename, "wb") { |f| f.write(file.read) }  #open file to be written into
     rescue
     end
 
@@ -171,6 +179,7 @@ class SubmittedContentController < ApplicationController
 
   private
 
+
   def check_file_exists  curr_directory
     #check if file exists. If not, create a new file. Else, remove the existing file and then create new file.
     if !File.exists? curr_directory
@@ -179,12 +188,8 @@ class SubmittedContentController < ApplicationController
       FileUtils.rm_rf(curr_directory)
       FileUtils.mkdir_p(curr_directory)
     end
-
-    safe_filename = file.original_filename.gsub(/\\/,"/")
-    safe_filename = FileHelper::sanitize_filename(safe_filename) # new code to sanitize file path before upload*
-    full_filename =  curr_directory + File.split(safe_filename).last.gsub(" ",'_') #safe_filename #curr_directory +
-    File.open(full_filename, "wb") { |f| f.write(file.read) }  #open file to be written into
   end
+
 
   def get_file_type file_name
     base = File.basename(file_name)
@@ -209,7 +214,7 @@ class SubmittedContentController < ApplicationController
     old_filename = params[:directories][params[:chk_files]] +"/"+ params[:filenames][params[:chk_files]]
     new_filename = params[:directories][params[:chk_files]] +"/"+ FileHelper::sanitize_filename(params[:faction][:rename])
     begin
-      if !File.exist?(new_filename)
+      unless File.exist?(new_filename)
         File.send("rename", old_filename, new_filename)
       else
         raise "A file already exists in this directory with the name \"#{params[:faction][:rename]}\""
@@ -227,16 +232,10 @@ class SubmittedContentController < ApplicationController
   def copy_selected_file
     old_filename = params[:directories][params[:chk_files]] +"/"+ params[:filenames][params[:chk_files]]
     new_filename = params[:directories][params[:chk_files]] +"/"+ FileHelper::sanitize_filename(params[:faction][:copy])
-    begin
-      if File.exist?(new_filename)
-        raise "A file with this name already exists. Please delete the existing file before copying."
-      end
 
-      if File.exist?(old_filename)
-        FileUtils.cp_r(old_filename, new_filename)
-      else
-        raise "The referenced file does not exist."
-      end
+    begin
+    File.exist?(new_filename)?raise "A file with this name already exists. Please delete the existing file before copying.": raise ""
+    File.exist?(old_filename)? FileUtils.cp_r(old_filename, new_filename): raise "The referenced file does not exist."
     rescue
       flash[:error] = "There was a problem copying the file: "+$!
     end
