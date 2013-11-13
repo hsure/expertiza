@@ -214,7 +214,7 @@ class SubmittedContentController < ApplicationController
     old_filename = params[:directories][params[:chk_files]] +"/"+ params[:filenames][params[:chk_files]]
     new_filename = params[:directories][params[:chk_files]] +"/"+ FileHelper::sanitize_filename(params[:faction][:rename])
     begin
-      unless File.exist?(new_filename)
+      if !File.exist?(new_filename)
         File.send("rename", old_filename, new_filename)
       else
         raise "A file already exists in this directory with the name \"#{params[:faction][:rename]}\""
@@ -234,8 +234,15 @@ class SubmittedContentController < ApplicationController
     new_filename = params[:directories][params[:chk_files]] +"/"+ FileHelper::sanitize_filename(params[:faction][:copy])
 
     begin
-    File.exist?(new_filename)?raise "A file with this name already exists. Please delete the existing file before copying.": raise ""
-    File.exist?(old_filename)? FileUtils.cp_r(old_filename, new_filename): raise "The referenced file does not exist."
+      if File.exist?(new_filename)
+        raise "A file with this name already exists. Please delete the existing file before copying."
+      end
+
+      if File.exist?(old_filename)
+        FileUtils.cp_r(old_filename, new_filename)
+      else
+        raise "The referenced file does not exist."
+        end
     rescue
       flash[:error] = "There was a problem copying the file: "+$!
     end
